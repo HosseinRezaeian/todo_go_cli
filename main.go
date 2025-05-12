@@ -13,9 +13,35 @@ type User struct {
 	Email    string
 	Password string
 }
+type Task struct {
+	Id         int
+	Title      string
+	DueDate    string
+	CategoryId int
+	IsDone     bool
+	UserId     int
+}
+type Category struct {
+	Id     int
+	Name   string
+	Color  string
+	UserId int
+}
+
+func (u User) print() {
+	fmt.Println("Name:", u.Name, "Id:", u.Id, "Email:", u.Email)
+}
+func inputScanner(text string) string {
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println(text)
+	scanner.Scan()
+	return scanner.Text()
+}
 
 var userStorge = []User{}
+var TaskStorge = []Task{}
 var AthenticatedUser *User
+var CategoryStorge = []Category{}
 
 func main() {
 
@@ -34,10 +60,15 @@ func main() {
 func runCommand(command string) {
 	if command != "register" && command != "exit" && AthenticatedUser == nil {
 		login()
+		if AthenticatedUser == nil {
+			return
+		}
 	}
 	switch command {
 	case "create-task":
 		createTask()
+	case "task-list":
+		taskList()
 	case "register":
 		register()
 	case "exit":
@@ -72,9 +103,25 @@ func register() {
 }
 
 func createTask() {
-
+	if AthenticatedUser != nil {
+		AthenticatedUser.print()
+	}
+	title := inputScanner("set a title:")
+	task := Task{
+		Id:       len(TaskStorge) + 1,
+		Title:    title,
+		DueDate:  "",
+		Category: "",
+		IsDone:   false,
+		UserId:   AthenticatedUser.Id,
+	}
+	TaskStorge = append(TaskStorge, task)
 }
-
+func taskList() {
+	for _, task := range TaskStorge {
+		fmt.Printf("%d %s\n", task.Id, task.Title)
+	}
+}
 func login() {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Login")
