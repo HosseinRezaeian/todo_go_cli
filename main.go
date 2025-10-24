@@ -2,17 +2,19 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
+	"encoding/hex"
+	"todo_cli/contract"
+
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+	"todo_cli/entity"
+	"todo_cli/filestore"
 )
 
-type User struct {
-	Name     string
-	Id       int
-	Email    string
-	Password string
-}
 type Task struct {
 	Id         int
 	Title      string
@@ -23,14 +25,11 @@ type Task struct {
 }
 type Category struct {
 	Id     int
-	Name   string
+	Title  string
 	Color  string
 	UserId int
 }
 
-func (u User) print() {
-	fmt.Println("Name:", u.Name, "Id:", u.Id, "Email:", u.Email)
-}
 func inputScanner(text string) string {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println(text)
@@ -38,9 +37,9 @@ func inputScanner(text string) string {
 	return scanner.Text()
 }
 
-var userStorge = []User{}
+var userStorge = []entity.User{}
 var TaskStorge = []Task{}
-var AthenticatedUser *User
+var AthenticatedUser *entity.User
 var CategoryStorge = []Category{}
 
 func main() {
@@ -57,6 +56,7 @@ func main() {
 	}
 
 }
+
 func runCommand(command string) {
 	if command != "register" && command != "exit" && AthenticatedUser == nil {
 		login()
@@ -64,20 +64,32 @@ func runCommand(command string) {
 			return
 		}
 	}
+	var userFileStore = filestore.New("./user.txt")
+	userLoadFromStorage(userFileStore)
+	var store contract.UserWriteStore
+
+	store = userFileStore
 	switch command {
 	case "create-task":
 		createTask()
+	case "create-category":
+		createCategory()
 	case "task-list":
 		taskList()
+	case "category-list":
+		categoryList()
 	case "register":
-		register()
+		register(store)
+	case "login":
+		login()
 	case "exit":
 		os.Exit(0)
 	default:
 		fmt.Println("command is not valid", command)
 	}
 }
-func register() {
+
+func register(store contract.UserWriteStore) {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Register")
 	fmt.Println("Enter your email:")
@@ -91,35 +103,68 @@ func register() {
 	fmt.Println("Enter your password:")
 	scanner.Scan()
 	password := scanner.Text()
-	user := User{
+
+	user := entity.User{
 		Id:       len(userStorge) + 1,
 		Name:     name,
-		Password: password,
+		Password: passwordHasher(password),
 		Email:    email,
 	}
 	userStorge = append(userStorge, user)
+
+	store.Save(user)
 	login()
 
 }
-
+func createCategory() {
+	title := inputScanner("set a title for category:")
+	color := inputScanner("set a color for category:")
+	newcat := Category{Id: len(CategoryStorge) + 1,
+		Title:  title,
+		Color:  color,
+		UserId: AthenticatedUser.Id}
+	CategoryStorge = append(CategoryStorge, newcat)
+}
 func createTask() {
-	if AthenticatedUser != nil {
-		AthenticatedUser.print()
-	}
+
 	title := inputScanner("set a title:")
+	category := inputScanner("set a category id:")
+	category = strings.TrimSpace(category)
+	categoryId, err := strconv.Atoi(category)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	iffound := false
+	for _, c := range CategoryStorge {
+		if c.Id == categoryId && c.UserId == AthenticatedUser.Id {
+			iffound = true
+			break
+
+		}
+	}
+	if !iffound {
+		fmt.Println("Category not found")
+		return
+	}
 	task := Task{
-		Id:       len(TaskStorge) + 1,
-		Title:    title,
-		DueDate:  "",
-		Category: "",
-		IsDone:   false,
-		UserId:   AthenticatedUser.Id,
+		Id:         len(TaskStorge) + 1,
+		Title:      title,
+		DueDate:    "",
+		CategoryId: 0,
+		IsDone:     false,
+		UserId:     AthenticatedUser.Id,
 	}
 	TaskStorge = append(TaskStorge, task)
 }
 func taskList() {
 	for _, task := range TaskStorge {
-		fmt.Printf("%d %s\n", task.Id, task.Title)
+		fmt.Printf("id:%d title:%s  \n", task.Id, task.Title)
+	}
+}
+func categoryList() {
+	for _, cate := range CategoryStorge {
+		fmt.Printf("%d %s\n", cate.Id, cate.Title)
 	}
 }
 func login() {
@@ -136,7 +181,7 @@ func login() {
 	notfound := true
 	for _, user := range userStorge {
 		if email == user.Email {
-			if password == user.Password {
+			if passwordHasher(password) == user.Password {
 				notfound = false
 				AthenticatedUser = &user
 				fmt.Println("you are login!!")
@@ -155,15 +200,16 @@ func login() {
 	}
 }
 
-// fmt.Println("hello")
-// 	command := flag.String("command", "no command", "create a new task")
-// 	flag.Parse()
-// 	fmt.Println(*command)
-// 	scanner := bufio.NewScanner(os.Stdin)
-// 	if *command == "create-task" {
-// 		fmt.Println(":")
+func userLoadFromStorage(store contract.UserReadStore) {
+	users := store.Load()
+	userStorge = append(userStorge, users...)
 
-// 		scanner.Scan()
-// 		name := scanner.Text()
-// 		fmt.Println(name)
-// 	}
+}
+
+func passwordHasher(password string) string {
+	hash := md5.Sum([]byte(password))
+
+	// تبدیل هش به رشته‌ی hex قابل چاپ
+	hashString := hex.EncodeToString(hash[:])
+	return hashString
+}
