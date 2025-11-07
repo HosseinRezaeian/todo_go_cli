@@ -5,6 +5,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"todo_cli/contract"
+	"todo_cli/repository/memorystore"
+	"todo_cli/service/task"
 
 	"flag"
 	"fmt"
@@ -15,21 +17,6 @@ import (
 	"todo_cli/filestore"
 )
 
-type Task struct {
-	Id         int
-	Title      string
-	DueDate    string
-	CategoryId int
-	IsDone     bool
-	UserId     int
-}
-type Category struct {
-	Id     int
-	Title  string
-	Color  string
-	UserId int
-}
-
 func inputScanner(text string) string {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println(text)
@@ -38,17 +25,18 @@ func inputScanner(text string) string {
 }
 
 var userStorge = []entity.User{}
-var TaskStorge = []Task{}
+var TaskStorge = []entity.Task{}
 var AthenticatedUser *entity.User
-var CategoryStorge = []Category{}
+var CategoryStorge = []entity.Category{}
 
 func main() {
-
+	taskMemoryRepo := memorystore.NewTaskStore()
+	taskService := task.NewService(taskMemoryRepo)
 	command := flag.String("command", "no command", "create a new task")
 	flag.Parse()
 	// scanner := bufio.NewScanner(os.Stdin)
 	for {
-		runCommand(*command)
+		runCommand(*command, &taskService)
 		scanner := bufio.NewScanner(os.Stdin)
 		fmt.Println("please enter another command:")
 		scanner.Scan()
@@ -57,7 +45,7 @@ func main() {
 
 }
 
-func runCommand(command string) {
+func runCommand(command string, taskService *task.Service) {
 	if command != "register" && command != "exit" && AthenticatedUser == nil {
 		login()
 		if AthenticatedUser == nil {
@@ -71,11 +59,11 @@ func runCommand(command string) {
 	store = userFileStore
 	switch command {
 	case "create-task":
-		createTask()
+		createTask(taskService)
 	case "create-category":
 		createCategory()
 	case "task-list":
-		taskList()
+		taskList(taskService)
 	case "category-list":
 		categoryList()
 	case "register":
@@ -119,13 +107,13 @@ func register(store contract.UserWriteStore) {
 func createCategory() {
 	title := inputScanner("set a title for category:")
 	color := inputScanner("set a color for category:")
-	newcat := Category{Id: len(CategoryStorge) + 1,
+	newcat := entity.Category{Id: len(CategoryStorge) + 1,
 		Title:  title,
 		Color:  color,
 		UserId: AthenticatedUser.Id}
 	CategoryStorge = append(CategoryStorge, newcat)
 }
-func createTask() {
+func createTask(taskService *task.Service) {
 
 	title := inputScanner("set a title:")
 	category := inputScanner("set a category id:")
@@ -147,20 +135,36 @@ func createTask() {
 		fmt.Println("Category not found")
 		return
 	}
-	task := Task{
-		Id:         len(TaskStorge) + 1,
-		Title:      title,
-		DueDate:    "",
-		CategoryId: 0,
-		IsDone:     false,
-		UserId:     AthenticatedUser.Id,
+	//task := entity.Task{
+	//	Id:         len(TaskStorge) + 1,
+	//	Title:      title,
+	//	DueDate:    "",
+	//	CategoryId: 0,
+	//	IsDone:     false,
+	//	UserId:     AthenticatedUser.Id,
+	//}
+
+	//TaskStorge = append(TaskStorge, task)
+	response, err := taskService.CreateTask(task.CreateRequest{
+		Title:               title,
+		DueDate:             "",
+		CategoryId:          categoryId,
+		AuthenticatedUserId: AthenticatedUser.Id,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
-	TaskStorge = append(TaskStorge, task)
+	fmt.Println(response)
+
 }
-func taskList() {
-	for _, task := range TaskStorge {
-		fmt.Printf("id:%d title:%s  \n", task.Id, task.Title)
+func taskList(taskService *task.Service) {
+	userTasks, err := taskService.List(AthenticatedUser.Id)
+	if err != nil {
+		fmt.Errorf(err.Error())
+		return
 	}
+	fmt.Println("user tasks:", userTasks)
 }
 func categoryList() {
 	for _, cate := range CategoryStorge {
